@@ -48,7 +48,7 @@ void cppm_init(int interrupt)
   cppm_read();
 
   pinMode(interrupt_to_pin[interrupt], INPUT);
-  attachInterrupt(interrupt, cppm_isr, RISING);
+  attachInterrupt(interrupt, cppm_isr, CPPM_LOGIC_DIRECTION);
 }
 
 void cppm_read()
