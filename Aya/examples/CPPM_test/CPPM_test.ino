@@ -1,5 +1,10 @@
+/** @file */
+
 #include "CPPM.h"
 
+/**
+ * @brief Setup routine.
+ */
 void setup()
 {
   Serial.begin(9600);
@@ -8,6 +13,9 @@ void setup()
   Serial.println(initResult);
 }
 
+/**
+ * @brief Main routine.
+ */
 void loop()
 {
   if (cppm_fresh)
@@ -17,6 +25,9 @@ void loop()
   }
 }
 
+/**
+ * @brief Prints all CPPM values to serial.
+ */
 void print_cppm_values()
 {
   for (size_t i = 0; i < CPPM_NUM_CHANNELS; i++)
