@@ -38,8 +38,11 @@ void cppm_isr()
   }
 }
 
-void cppm_init(int interrupt)
+bool cppm_init(int interrupt, int logic_direction)
 {
+  if (logic_direction != FALLING && logic_direction != RISING)
+    return false;
+
   cppm_frame_good = false;
 
   for (size_t i = 0; i < CPPM_NUM_CHANNELS; i++)
@@ -48,7 +51,9 @@ void cppm_init(int interrupt)
   cppm_read();
 
   pinMode(interrupt_to_pin[interrupt], INPUT);
-  attachInterrupt(interrupt, cppm_isr, CPPM_LOGIC_DIRECTION);
+  attachInterrupt(interrupt, cppm_isr, logic_direction);
+
+  return true;
 }
 
 void cppm_read()

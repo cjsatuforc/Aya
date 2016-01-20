@@ -4,8 +4,8 @@ void setup()
 {
   Serial.begin(9600);
 
-  cppm_init(1);
-  Serial.println("Hi");
+  bool initResult = cppm_init(1); // Interrupt 1, pin 3
+  Serial.println(initResult);
 }
 
 void loop()
@@ -14,7 +14,6 @@ void loop()
   {
     cppm_read();
     print_cppm_values();
-    delay(50);
   }
 }
 
