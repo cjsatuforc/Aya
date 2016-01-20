@@ -2,7 +2,7 @@
 #define _CPPM_AYA_H_
 
 #define CPPM_NUM_CHANNELS 8
-#define CPPM_LOGIC_DIRECTION RISING
+#define CPPM_LOGIC_DIRECTION FALLING
 
 #include <Arduino.h>
 
