@@ -66,7 +66,8 @@ void cppm_isr()
   // End of channel pulse
   else if (channel < CPPM_NUM_CHANNELS)
   {
-    if (pulse_width_us >= CPPM_US_PULSE_MIN && pulse_width_us <= CPPM_US_PULSE_MAX)
+    if (pulse_width_us >= CPPM_US_PULSE_MIN &&
+        pulse_width_us <= CPPM_US_PULSE_MAX)
       cppm_raw[channel] = pulse_width_us;
     else
       cppm_frame_good = false;
