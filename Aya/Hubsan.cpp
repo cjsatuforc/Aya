@@ -31,7 +31,7 @@
 
 #define MIN_THROTTLE_US 1100
 
-//#define USE_HUBSAN_EXTENDED // H107D LED/Flip etc control on AUX channels
+#define USE_HUBSAN_EXTENDED
 #define DEFAULT_VTX_FREQ 5885 // x0.001GHz 5725:5995 steps of 5
 
 #define WAIT_WRITE 0x80
@@ -39,6 +39,10 @@
 #define READY 0x01
 #define BINDING 0x02
 #define BINDDLG 0x04
+
+#define FLAG_VIDEO 0x01
+#define FLAG_FLIP 0x08
+#define FLAG_LED 0x04
 
 const uint8_t hubsanAllowedChannels[] = {0x14, 0x1e, 0x28, 0x32, 0x3c, 0x46,
                                          0x50, 0x5a, 0x64, 0x6e, 0x78, 0x82};
@@ -50,8 +54,9 @@ Hubsan::Hubsan()
     : IProtocol()
     , m_state(BIND_1)
     , m_rssiChannel(0)
-    , m_enableFlip(false)
+    , m_enableFlip(true)
     , m_enableLED(true)
+    , m_recordVideo(false)
 {
   a7105SetupSPI();
 }
@@ -72,16 +77,6 @@ bool Hubsan::setup()
     }
   }
 
-  if (retVal)
-  {
-    m_sessionID = random();
-    m_channel = hubsanAllowedChannels[random() % sizeof(hubsanAllowedChannels)];
-    setBindState(0xffffffff);
-    m_state = BIND_1;
-    m_packetCount = 0;
-    m_vtxFreq = DEFAULT_VTX_FREQ;
-  }
-
   return retVal;
 }
 
@@ -90,6 +85,13 @@ bool Hubsan::setup()
  */
 bool Hubsan::bind()
 {
+  m_sessionID = random();
+  m_channel = hubsanAllowedChannels[random() % sizeof(hubsanAllowedChannels)];
+  setBindState(0xffffffff);
+  m_state = BIND_1;
+  m_packetCount = 0;
+  m_vtxFreq = DEFAULT_VTX_FREQ;
+
   return true;
 }
 
@@ -117,6 +119,9 @@ bool Hubsan::setCommand(ProtocolCommand command, uint16_t value)
     break;
   case COMMAND_LIGHTS:
     m_enableLED = value <= 1800;
+    break;
+  case COMMAND_VIDEO:
+    m_recordVideo = value > 1800;
     break;
   default:
     return false;
@@ -347,6 +352,9 @@ void Hubsan::setBindState(uint32_t ms)
     m_state &= ~BINDING;
 }
 
+/**
+ * @brief Builds a standard data packet.
+ */
 void Hubsan::buildPacket()
 {
   memset(a7105_packet, 0, 16);
@@ -370,19 +378,23 @@ void Hubsan::buildPacket()
   a7105_packet[6] = m_sticks[COMMAND_PITCH];
   a7105_packet[8] = m_sticks[COMMAND_ROLL];
 
-  a7105_packet[9] = 0x20;
-
-  // Sends default value for the 100 first packets
   if (m_packetCount > 100)
   {
-    if (!m_enableLED)
-      a7105_packet[9] |= 0b00000100;
+    a7105_packet[9] = 0x20;
+
+    if (m_enableLED)
+      a7105_packet[9] |= FLAG_LED;
 
     if (m_enableFlip)
-      a7105_packet[9] |= 0b00001000;
+      a7105_packet[9] |= FLAG_FLIP;
+
+    if (m_recordVideo)
+      a7105_packet[9] |= FLAG_VIDEO;
   }
   else
   {
+    // Sends default value for the 100 first packets
+    a7105_packet[9] = 0x20 | FLAG_LED | FLAG_FLIP;
     m_packetCount++;
   }
 
@@ -395,6 +407,9 @@ void Hubsan::buildPacket()
   a7105CRCUpdate(16);
 }
 
+/**
+ * @brief Builds a binding packet.
+ */
 void Hubsan::buildBindPacket(uint8_t state)
 {
   a7105_packet[0] = state;
@@ -416,6 +431,9 @@ void Hubsan::buildBindPacket(uint8_t state)
   a7105CRCUpdate(16);
 }
 
+/**
+ * @brief Parses telemetry data.
+ */
 void Hubsan::updateTelemetry()
 {
   enum Tag0xe0

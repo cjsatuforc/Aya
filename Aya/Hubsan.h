@@ -55,6 +55,7 @@ private:
   uint8_t m_rssiChannel;
   bool m_enableFlip;
   bool m_enableLED;
+  bool m_recordVideo;
   uint8_t m_sticks[4];
 };
 

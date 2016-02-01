@@ -25,7 +25,7 @@ void setup()
 
   hubsan.setup();
 
-  delay(500);
+  delay(1000);
 
   Timer1.setPeriod(50000); // 0.05s
 
@@ -42,6 +42,8 @@ void setup()
 
     delay(10);
   }
+
+  delay(1000);
 
   hubsan.bind();
 
