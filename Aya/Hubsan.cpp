@@ -33,8 +33,6 @@
 
 //#define USE_HUBSAN_EXTENDED // H107D LED/Flip etc control on AUX channels
 #define DEFAULT_VTX_FREQ 5885 // x0.001GHz 5725:5995 steps of 5
-#define HUBSAN_LEDS_BIT 2
-#define HUBSAN_FLIP_BIT 3
 
 #define WAIT_WRITE 0x80
 
@@ -52,7 +50,7 @@ Hubsan::Hubsan()
     : IProtocol()
     , m_state(BIND_1)
     , m_rssiChannel(0)
-    , m_enableFlip(true)
+    , m_enableFlip(false)
     , m_enableLED(true)
 {
   a7105SetupSPI();
@@ -118,7 +116,7 @@ bool Hubsan::setCommand(ProtocolCommand command, uint16_t value)
     m_enableFlip = value > 1800;
     break;
   case COMMAND_LIGHTS:
-    m_enableLED = value > 1800;
+    m_enableLED = value <= 1800;
     break;
   default:
     return false;
@@ -138,6 +136,7 @@ uint16_t Hubsan::tx()
     waitTx,
     pollRx
   };
+
   uint16_t d;
   static uint8_t telemetryState = doTx;
   static uint8_t polls, i;
@@ -380,10 +379,11 @@ void Hubsan::buildPacket()
   // Sends default value for the 100 first packets
   if (m_packetCount > 100)
   {
-    if (m_enableLED)
-      bitSet(a7105_packet[9], HUBSAN_LEDS_BIT);
+    if (!m_enableLED)
+      a7105_packet[9] |= 0b00000100;
+
     if (m_enableFlip)
-      bitSet(a7105_packet[9], HUBSAN_FLIP_BIT);
+      a7105_packet[9] |= 0b00001000;
   }
   else
   {
