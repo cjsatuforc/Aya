@@ -158,8 +158,6 @@ uint16_t Hubsan::tx()
   case BIND_3 | WAIT_WRITE:
   case BIND_5 | WAIT_WRITE:
   case BIND_7 | WAIT_WRITE:
-    if (a7105Busy()) // check for completion
-      Serial.println("pwf");
     a7105Strobe(A7105_RX);
     m_state &= ~WAIT_WRITE;
     m_state++;
@@ -187,13 +185,11 @@ uint16_t Hubsan::tx()
   case BIND_8:
     if (a7105Busy())
     {
-      Serial.println("nr");
       m_state = BIND_7;
       d = 15000; // 22.5mS elapsed since last write
     }
     else
     {
-      Serial.println("r");
       a7105ReadData(a7105_packet, 16);
       if (a7105_packet[1] == 9)
       {
@@ -257,9 +253,9 @@ uint16_t Hubsan::tx()
         telemetryState = doTx;
       }
       break;
-    } // switch
+    } // switch (telemetryState)
     break;
-  } // switch
+  } // switch (m_state)
 
   return d;
 }
