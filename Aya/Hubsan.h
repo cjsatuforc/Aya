@@ -31,7 +31,7 @@ enum
 class Hubsan : public IProtocol
 {
 public:
-  Hubsan();
+  Hubsan(bool forceBind = false);
   virtual ~Hubsan(){};
 
   bool setup();
@@ -57,6 +57,7 @@ private:
   bool m_enableLED;
   bool m_recordVideo;
   uint8_t m_sticks[4];
+  bool m_forceBind;
 };
 
 #endif

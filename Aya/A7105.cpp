@@ -47,7 +47,7 @@ uint8_t a7105_packet[21];
 #define SCK_LO() digitalWrite(SCLK_PIN, LOW)
 #define SDIO_HI() digitalWrite(SDIO_PIN, HIGH)
 #define SDIO_LO() digitalWrite(SDIO_PIN, LOW)
-#define SDIO_IS_HI digitalRead(SDIO_PIN)
+#define SDIO_IS_HI() digitalRead(SDIO_PIN) == HIGH
 #endif
 
 #define SPI_DELAY() delayMicroseconds(1)

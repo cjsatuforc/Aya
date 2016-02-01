@@ -50,15 +50,15 @@ const uint8_t hubsanAllowedChannels[] = {0x14, 0x1e, 0x28, 0x32, 0x3c, 0x46,
 /**
  * @brief Creates a new instance of the Hubsan protocol.
  */
-Hubsan::Hubsan()
+Hubsan::Hubsan(bool forceBind)
     : IProtocol()
     , m_state(BIND_1)
     , m_rssiChannel(0)
     , m_enableFlip(true)
     , m_enableLED(true)
     , m_recordVideo(false)
+    , m_forceBind(forceBind)
 {
-  a7105SetupSPI();
 }
 
 /**
@@ -67,6 +67,8 @@ Hubsan::Hubsan()
 bool Hubsan::setup()
 {
   bool retVal = false;
+
+  a7105SetupSPI();
 
   for (uint8_t i = 0; i < 100; i++)
   {
@@ -146,6 +148,8 @@ uint16_t Hubsan::tx()
   static uint8_t telemetryState = doTx;
   static uint8_t polls, i;
 
+  Serial.println(m_state);
+
   switch (m_state)
   {
   case BIND_1:
@@ -188,7 +192,7 @@ uint16_t Hubsan::tx()
     }
     break;
   case BIND_8:
-    if (a7105Busy())
+    if (a7105Busy() && !m_forceBind)
     {
       m_state = BIND_7;
       d = 15000; // 22.5mS elapsed since last write
@@ -196,7 +200,7 @@ uint16_t Hubsan::tx()
     else
     {
       a7105ReadData(a7105_packet, 16);
-      if (a7105_packet[1] == 9)
+      if (a7105_packet[1] == 9 || m_forceBind)
       {
         m_state = DATA_1;
         a7105WriteReg(A7105_1F_CODE_I, 0x0F);

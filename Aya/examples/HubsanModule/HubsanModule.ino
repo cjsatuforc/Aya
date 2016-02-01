@@ -10,7 +10,7 @@
 #define THROTTLE_CHANNEL 2
 #define MIN_THROTTLE 1050
 
-Hubsan hubsan;
+Hubsan hubsan(true);
 uint32_t next_update_us = 0;
 
 /**
@@ -18,16 +18,12 @@ uint32_t next_update_us = 0;
  */
 void setup()
 {
-  Timer1.initialize(250000); // 0.25s
+  Serial.begin(9600);
+
   Timer1.attachInterrupt(toggle_led);
+  Timer1.initialize(50000); // 0.05s
 
   cppm_init(1); // Interrupt 1, pin 3
-
-  hubsan.setup();
-
-  delay(1000);
-
-  Timer1.setPeriod(50000); // 0.05s
 
   /* Wait for PPM signal */
   while (!cppm_fresh)
@@ -45,6 +41,7 @@ void setup()
 
   delay(1000);
 
+  hubsan.setup();
   hubsan.bind();
 
   Timer1.setPeriod(1000000); // 1s
@@ -72,6 +69,9 @@ void loop()
     next_update_us = (now_us + hubsan.tx());
 }
 
+/**
+ * @brief Toggles status indicator LED.
+ */
 void toggle_led()
 {
   digitalWrite(LED_PIN, !digitalRead(LED_PIN));
