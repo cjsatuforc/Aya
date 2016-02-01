@@ -18,16 +18,12 @@ uint32_t next_update_us = 0;
  */
 void setup()
 {
-  Serial.begin(9600);
-
   Timer1.initialize(250000); // 0.25s
   Timer1.attachInterrupt(toggle_led);
 
-  Serial.print("PPM init: ");
-  Serial.println(cppm_init(1)); // Interrupt 1, pin 3
+  cppm_init(1); // Interrupt 1, pin 3
 
-  Serial.print("Hubsan init: ");
-  Serial.println(hubsan.setup());
+  hubsan.setup();
 
   delay(500);
 
@@ -47,8 +43,7 @@ void setup()
     delay(10);
   }
 
-  Serial.print("Hubsan bind: ");
-  Serial.println(hubsan.bind());
+  hubsan.bind();
 
   Timer1.setPeriod(1000000); // 1s
 }
