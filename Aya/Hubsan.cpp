@@ -29,6 +29,8 @@
 #include "Hubsan.h"
 #include "A7105.h"
 
+#define MIN_THROTTLE_US 1100
+
 //#define USE_HUBSAN_EXTENDED // H107D LED/Flip etc control on AUX channels
 #define DEFAULT_VTX_FREQ 5885 // x0.001GHz 5725:5995 steps of 5
 #define HUBSAN_LEDS_BIT 2
@@ -43,23 +45,29 @@
 const uint8_t hubsanAllowedChannels[] = {0x14, 0x1e, 0x28, 0x32, 0x3c, 0x46,
                                          0x50, 0x5a, 0x64, 0x6e, 0x78, 0x82};
 
+/**
+ * @brief Creates a new instance of the Hubsan protocol.
+ */
 Hubsan::Hubsan()
     : IProtocol()
-    , hubsanState(BIND_1)
-    , rssiBackChannel(0)
-    , enableFlip(true)
-    , enableLEDs(true)
+    , m_state(BIND_1)
+    , m_rssiChannel(0)
+    , m_enableFlip(true)
+    , m_enableLED(true)
 {
   a7105SetupSPI();
 }
 
+/**
+ * @copydoc IProtocol::setup
+ */
 bool Hubsan::setup()
 {
   bool retVal = false;
 
   for (uint8_t i = 0; i < 100; i++)
   {
-    if (this->init())
+    if (this->initRadio())
     {
       retVal = true;
       break;
@@ -68,18 +76,202 @@ bool Hubsan::setup()
 
   if (retVal)
   {
-    sessionID = random();
-    chan = hubsanAllowedChannels[random() % sizeof(hubsanAllowedChannels)];
+    m_sessionID = random();
+    m_channel = hubsanAllowedChannels[random() % sizeof(hubsanAllowedChannels)];
     setBindState(0xffffffff);
-    hubsanState = BIND_1;
-    hubsanPacketCount = 0;
-    hubsanVTXFreq = DEFAULT_VTX_FREQ;
+    m_state = BIND_1;
+    m_packetCount = 0;
+    m_vtxFreq = DEFAULT_VTX_FREQ;
   }
 
   return retVal;
 }
 
-bool Hubsan::init()
+/**
+ * @copydoc IProtocol::bind()
+ */
+bool Hubsan::bind()
+{
+  return true;
+}
+
+/**
+ * @copydoc IProtocol::setCommand
+ */
+bool Hubsan::setCommand(ProtocolCommand command, uint16_t value)
+{
+  switch (command)
+  {
+  case COMMAND_THROTTLE:
+    if (value < MIN_THROTTLE_US)
+      value = MIN_THROTTLE_US;
+    m_sticks[COMMAND_THROTTLE] = map(value, MIN_THROTTLE_US, 2000, 0, 255);
+    break;
+  case COMMAND_YAW:
+    m_sticks[command] = map(value, 1000, 2000, 0, 255);
+    break;
+  case COMMAND_PITCH:
+  case COMMAND_ROLL:
+    m_sticks[command] = map(value, 1000, 2000, 255, 0);
+    break;
+  case COMMAND_FLIPS:
+    m_enableFlip = value > 1800;
+    break;
+  case COMMAND_LIGHTS:
+    m_enableLED = value > 1800;
+    break;
+  default:
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * @copydoc IProtocol::tx
+ */
+uint16_t Hubsan::tx()
+{
+  enum
+  {
+    doTx,
+    waitTx,
+    pollRx
+  };
+  uint16_t d;
+  static uint8_t telemetryState = doTx;
+  static uint8_t polls, i;
+
+  switch (m_state)
+  {
+  case BIND_1:
+  case BIND_3:
+  case BIND_5:
+  case BIND_7:
+    buildBindPacket(
+        m_state == BIND_7 ? 9 : (m_state == BIND_5 ? 1 : m_state + 1 - BIND_1));
+    a7105Strobe(A7105_STANDBY);
+    a7105WriteData(a7105_packet, 16, m_channel);
+    m_state |= WAIT_WRITE;
+    d = 3000;
+    break;
+  case BIND_1 | WAIT_WRITE:
+  case BIND_3 | WAIT_WRITE:
+  case BIND_5 | WAIT_WRITE:
+  case BIND_7 | WAIT_WRITE:
+    if (a7105Busy()) // check for completion
+      Serial.println("pwf");
+    a7105Strobe(A7105_RX);
+    m_state &= ~WAIT_WRITE;
+    m_state++;
+    d = 4500; // 7.5mS elapsed since last write
+    break;
+  case BIND_2:
+  case BIND_4:
+  case BIND_6:
+    if (a7105Busy())
+    {
+      m_state = BIND_1;
+      d = 4500; // No signal, restart binding procedure.  12mS elapsed since
+                // last write
+    }
+    else
+    {
+      a7105ReadData(a7105_packet, 16);
+      m_state++;
+      if (m_state == BIND_5)
+        a7105WriteID((a7105_packet[2] << 24) | (a7105_packet[3] << 16) |
+                     (a7105_packet[4] << 8) | a7105_packet[5]);
+      d = 500; // 8mS elapsed time since last write
+    }
+    break;
+  case BIND_8:
+    if (a7105Busy())
+    {
+      Serial.println("nr");
+      m_state = BIND_7;
+      d = 15000; // 22.5mS elapsed since last write
+    }
+    else
+    {
+      Serial.println("r");
+      a7105ReadData(a7105_packet, 16);
+      if (a7105_packet[1] == 9)
+      {
+        m_state = DATA_1;
+        a7105WriteReg(A7105_1F_CODE_I, 0x0F);
+        setBindState(0);
+        d = 28000; // 35.5mS elapsed since last write
+      }
+      else
+      {
+        m_state = BIND_7;
+        d = 15000; // 22.5 mS elapsed since last write
+      }
+    }
+    break;
+  case DATA_1:
+    a7105SetPower(TXPOWER_150mW); // keep transmit power in sync
+  case DATA_2:
+  case DATA_3:
+  case DATA_4:
+  case DATA_5:
+    switch (telemetryState)
+    { // Goebish - telemetry is every ~0.1S r 10 Tx packets
+    case doTx:
+      buildPacket();
+      a7105Strobe(A7105_STANDBY);
+      a7105WriteData(a7105_packet, 16,
+                     m_state == DATA_5 ? m_channel + 0x23 : m_channel);
+      d = 3000; // nominal tx time
+      telemetryState = waitTx;
+      break;
+    case waitTx:
+      if (a7105Busy())
+        d = 0;
+      else
+      { // wait for tx completion
+        a7105Strobe(A7105_RX);
+        polls = 0;
+        telemetryState = pollRx;
+        d = 3000; // nominal rx time
+      }
+      break;
+    case pollRx: // check for telemetry
+      if (a7105Busy())
+        d = 1000;
+      else
+      {
+        a7105ReadData(a7105_packet, 16);
+        m_rssiChannel = a7105ReadReg(A7105_1D_RSSI_THOLD);
+        updateTelemetry();
+        a7105Strobe(A7105_RX);
+        d = 1000;
+      }
+
+      if (++polls >= 7)
+      { // 3ms + 3mS + 4*1ms
+        if (m_state == DATA_5)
+          m_state = DATA_1;
+        else
+          m_state++;
+        telemetryState = doTx;
+      }
+      break;
+    } // switch
+    break;
+  } // switch
+
+  return d;
+}
+
+/**
+ * @brief Initializes the A7105 radio.
+ * @return True if the radio was successfully initialised
+ *
+ * If initialization fails, multiple attempts can be made.
+ */
+bool Hubsan::initRadio()
 {
   uint8_t vco_current;
   uint32_t timeoutuS;
@@ -146,46 +338,86 @@ bool Hubsan::init()
   return true;
 }
 
-bool Hubsan::bind()
-{
-  return true;
-}
-
-bool Hubsan::setCommand(ProtocolCommand command, uint16_t value)
-{
-  switch (command)
-  {
-  case COMMAND_THROTTLE:
-  case COMMAND_YAW:
-  case COMMAND_PITCH:
-  case COMMAND_ROLL:
-    sticks[command] = constrain((value >> 2) - 247, 0, 255);
-    break;
-  case COMMAND_FLIPS:
-    enableFlip = value > 1800;
-    break;
-  case COMMAND_LIGHTS:
-    enableLEDs = value > 1800;
-    break;
-  default:
-    return false;
-  }
-
-  return true;
-}
-
 void Hubsan::setBindState(uint32_t ms)
 {
   if (ms)
   {
     if (ms == 0xFFFFFFFF)
-      bind_time = ms;
+      m_bindTime = ms;
     else
-      bind_time = millis() + ms;
-    hubsanState |= BINDING;
+      m_bindTime = millis() + ms;
+    m_state |= BINDING;
   }
   else
-    hubsanState &= ~BINDING;
+    m_state &= ~BINDING;
+}
+
+void Hubsan::buildPacket()
+{
+  memset(a7105_packet, 0, 16);
+
+#if defined(USE_HUBSAN_EXTENDED)
+  if (m_packetCount == 100)
+  { // set vTX frequency (H107D)
+    a7105_packet[0] = 0x40;
+    a7105_packet[1] = (m_vtxFreq >> 8) & 0xff;
+    a7105_packet[2] = m_vtxFreq & 0xff;
+    a7105_packet[3] = 0x82;
+    m_packetCount++;
+  }
+  else
+#endif
+  { // 20 00 00 00 80 00 7d 00 84 02 64 db 04 26 79 7b
+    a7105_packet[0] = 0x20;
+    a7105_packet[2] = m_sticks[COMMAND_THROTTLE];
+  }
+  a7105_packet[4] = m_sticks[COMMAND_YAW];
+  a7105_packet[6] = m_sticks[COMMAND_PITCH];
+  a7105_packet[8] = m_sticks[COMMAND_ROLL];
+
+  a7105_packet[9] = 0x20;
+
+  // Sends default value for the 100 first packets
+  if (m_packetCount > 100)
+  {
+    if (m_enableLED)
+      bitSet(a7105_packet[9], HUBSAN_LEDS_BIT);
+    if (m_enableFlip)
+      bitSet(a7105_packet[9], HUBSAN_FLIP_BIT);
+  }
+  else
+  {
+    m_packetCount++;
+  }
+
+  a7105_packet[10] = 0x64;
+  a7105_packet[11] = (hubsanID >> 24) & 0xff;
+  a7105_packet[12] = (hubsanID >> 16) & 0xff;
+  a7105_packet[13] = (hubsanID >> 8) & 0xff;
+  a7105_packet[14] = (hubsanID >> 0) & 0xff;
+
+  a7105CRCUpdate(16);
+}
+
+void Hubsan::buildBindPacket(uint8_t state)
+{
+  a7105_packet[0] = state;
+  a7105_packet[1] = m_channel;
+  a7105_packet[2] = (m_sessionID >> 24) & 0xff;
+  a7105_packet[3] = (m_sessionID >> 16) & 0xff;
+  a7105_packet[4] = (m_sessionID >> 8) & 0xff;
+  a7105_packet[5] = (m_sessionID >> 0) & 0xff;
+  a7105_packet[6] = 0x08;
+  a7105_packet[7] = 0xe4; //???
+  a7105_packet[8] = 0xea;
+  a7105_packet[9] = 0x9e;
+  a7105_packet[10] = 0x50;
+  a7105_packet[11] = (hubsanID >> 24) & 0xff;
+  a7105_packet[12] = (hubsanID >> 16) & 0xff;
+  a7105_packet[13] = (hubsanID >> 8) & 0xff;
+  a7105_packet[14] = (hubsanID >> 0) & 0xff;
+
+  a7105CRCUpdate(16);
 }
 
 void Hubsan::updateTelemetry()
@@ -241,213 +473,4 @@ void Hubsan::updateTelemetry()
 
     // TODO
   }
-}
-
-void Hubsan::buildBindPacket(uint8_t hubsanState)
-{
-  a7105_packet[0] = hubsanState;
-  a7105_packet[1] = chan;
-  a7105_packet[2] = (sessionID >> 24) & 0xff;
-  a7105_packet[3] = (sessionID >> 16) & 0xff;
-  a7105_packet[4] = (sessionID >> 8) & 0xff;
-  a7105_packet[5] = (sessionID >> 0) & 0xff;
-  a7105_packet[6] = 0x08;
-  a7105_packet[7] = 0xe4; //???
-  a7105_packet[8] = 0xea;
-  a7105_packet[9] = 0x9e;
-  a7105_packet[10] = 0x50;
-  a7105_packet[11] = (hubsanID >> 24) & 0xff;
-  a7105_packet[12] = (hubsanID >> 16) & 0xff;
-  a7105_packet[13] = (hubsanID >> 8) & 0xff;
-  a7105_packet[14] = (hubsanID >> 0) & 0xff;
-
-  a7105CRCUpdate(16);
-}
-
-void Hubsan::buildPacket()
-{
-  memset(a7105_packet, 0, 16);
-
-#define VTX_STEP_SIZE 5
-
-#if defined(USE_HUBSAN_EXTENDED)
-  if (hubsanPacketCount == 100)
-  { // set vTX frequency (H107D)
-    a7105_packet[0] = 0x40;
-    a7105_packet[1] = (hubsanVTXFreq >> 8) & 0xff;
-    a7105_packet[2] = hubsanVTXFreq & 0xff;
-    a7105_packet[3] = 0x82;
-    hubsanPacketCount++;
-  }
-  else
-#endif
-  { // 20 00 00 00 80 00 7d 00 84 02 64 db 04 26 79 7b
-    a7105_packet[0] = 0x20;
-    a7105_packet[2] = sticks[COMMAND_THROTTLE];
-  }
-  a7105_packet[4] = 0xff - sticks[COMMAND_YAW];
-  a7105_packet[6] = 0xff - sticks[COMMAND_PITCH];
-  a7105_packet[8] = sticks[COMMAND_ROLL];
-
-  a7105_packet[9] = 0x20;
-
-  // sends default value for the 100 first packets
-  if (hubsanPacketCount > 100)
-  {
-    if (enableLEDs)
-      bitSet(a7105_packet[9], HUBSAN_LEDS_BIT);
-    if (enableFlip)
-      bitSet(a7105_packet[9], HUBSAN_FLIP_BIT);
-  }
-  else
-  {
-    hubsanPacketCount++;
-  }
-
-  a7105_packet[10] = 0x64;
-  // could be optimised out
-  a7105_packet[11] = (hubsanID >> 24) & 0xff;
-  a7105_packet[12] = (hubsanID >> 16) & 0xff;
-  a7105_packet[13] = (hubsanID >> 8) & 0xff;
-  a7105_packet[14] = (hubsanID >> 0) & 0xff;
-
-  a7105CRCUpdate(16);
-}
-
-uint16_t Hubsan::tx()
-{
-  enum
-  {
-    doTx,
-    waitTx,
-    pollRx
-  };
-  uint16_t d;
-  static uint8_t telemetryState = doTx;
-  static uint8_t polls, i;
-
-  switch (hubsanState)
-  {
-  case BIND_1:
-  case BIND_3:
-  case BIND_5:
-  case BIND_7:
-    buildBindPacket(
-        hubsanState == BIND_7
-            ? 9
-            : (hubsanState == BIND_5 ? 1 : hubsanState + 1 - BIND_1));
-    a7105Strobe(A7105_STANDBY);
-    a7105WriteData(a7105_packet, 16, chan);
-    hubsanState |= WAIT_WRITE;
-    d = 3000;
-    break;
-  case BIND_1 | WAIT_WRITE:
-  case BIND_3 | WAIT_WRITE:
-  case BIND_5 | WAIT_WRITE:
-  case BIND_7 | WAIT_WRITE:
-    if (a7105Busy()) // check for completion
-      Serial.println("pwf");
-    a7105Strobe(A7105_RX);
-    hubsanState &= ~WAIT_WRITE;
-    hubsanState++;
-    d = 4500; // 7.5mS elapsed since last write
-    break;
-  case BIND_2:
-  case BIND_4:
-  case BIND_6:
-    if (a7105Busy())
-    {
-      Serial.println("ns");
-      hubsanState = BIND_1;
-      d = 4500; // No signal, restart binding procedure.  12mS elapsed since
-                // last write
-    }
-    else
-    {
-      a7105ReadData(a7105_packet, 16);
-      hubsanState++;
-      if (hubsanState == BIND_5)
-        a7105WriteID((a7105_packet[2] << 24) | (a7105_packet[3] << 16) |
-                     (a7105_packet[4] << 8) | a7105_packet[5]);
-      d = 500; // 8mS elapsed time since last write
-    }
-    break;
-  case BIND_8:
-    if (a7105Busy())
-    {
-      Serial.println("nr");
-      hubsanState = BIND_7;
-      d = 15000; // 22.5mS elapsed since last write
-    }
-    else
-    {
-      Serial.println("r");
-      a7105ReadData(a7105_packet, 16);
-      if (a7105_packet[1] == 9)
-      {
-        hubsanState = DATA_1;
-        a7105WriteReg(A7105_1F_CODE_I, 0x0F);
-        setBindState(0);
-        d = 28000; // 35.5mS elapsed since last write
-      }
-      else
-      {
-        hubsanState = BIND_7;
-        d = 15000; // 22.5 mS elapsed since last write
-      }
-    }
-    break;
-  case DATA_1:
-    a7105SetPower(TXPOWER_150mW); // keep transmit power in sync
-  case DATA_2:
-  case DATA_3:
-  case DATA_4:
-  case DATA_5:
-    switch (telemetryState)
-    { // Goebish - telemetry is every ~0.1S r 10 Tx packets
-    case doTx:
-      buildPacket();
-      a7105Strobe(A7105_STANDBY);
-      a7105WriteData(a7105_packet, 16,
-                     hubsanState == DATA_5 ? chan + 0x23 : chan);
-      d = 3000; // nominal tx time
-      telemetryState = waitTx;
-      break;
-    case waitTx:
-      if (a7105Busy())
-        d = 0;
-      else
-      { // wait for tx completion
-        a7105Strobe(A7105_RX);
-        polls = 0;
-        telemetryState = pollRx;
-        d = 3000; // nominal rx time
-      }
-      break;
-    case pollRx: // check for telemetry
-      if (a7105Busy())
-        d = 1000;
-      else
-      {
-        a7105ReadData(a7105_packet, 16);
-        rssiBackChannel = a7105ReadReg(A7105_1D_RSSI_THOLD);
-        updateTelemetry();
-        a7105Strobe(A7105_RX);
-        d = 1000;
-      }
-
-      if (++polls >= 7)
-      { // 3ms + 3mS + 4*1ms
-        if (hubsanState == DATA_5)
-          hubsanState = DATA_1;
-        else
-          hubsanState++;
-        telemetryState = doTx;
-      }
-      break;
-    } // switch
-    break;
-  } // switch
-
-  return d;
 }

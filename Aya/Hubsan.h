@@ -32,7 +32,7 @@ class Hubsan : public IProtocol
 {
 public:
   Hubsan();
-  virtual ~Hubsan() {};
+  virtual ~Hubsan(){};
 
   bool setup();
   bool bind();
@@ -40,23 +40,22 @@ public:
   uint16_t tx();
 
 private:
-  bool init();
+  bool initRadio();
   void setBindState(uint32_t ms);
-  void updateTelemetry();
   void buildPacket();
-  void buildBindPacket(uint8_t hubsanState);
+  void buildBindPacket(uint8_t state);
+  void updateTelemetry();
 
-  int16_t hubsanState;
-  uint16_t hubsanVTXFreq;
-  uint8_t chan;
-  uint32_t sessionID;
-  uint8_t hubsanPacketCount;
-  uint8_t hubsanTxState, hubsanRFMode;
-  uint32_t bind_time;
-  uint8_t rssiBackChannel;
-  bool enableFlip;
-  bool enableLEDs;
-  uint8_t sticks[4];
+  int16_t m_state;
+  uint16_t m_vtxFreq;
+  uint8_t m_channel;
+  uint32_t m_sessionID;
+  uint8_t m_packetCount;
+  uint32_t m_bindTime;
+  uint8_t m_rssiChannel;
+  bool m_enableFlip;
+  bool m_enableLED;
+  uint8_t m_sticks[4];
 };
 
 #endif
