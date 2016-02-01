@@ -11,6 +11,7 @@ before_install:
   - source <(curl -SLs https://raw.githubusercontent.com/adafruit/travis-ci-arduino/master/install.sh)
 
 install:
+  - arduino --install-library "TimerOne"
   - ln -s $PWD/Aya $HOME/arduino_ide/libraries/Aya
 
 script:
