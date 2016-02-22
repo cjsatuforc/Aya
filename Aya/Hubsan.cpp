@@ -48,8 +48,9 @@ const uint8_t hubsanAllowedChannels[] = {0x14, 0x1e, 0x28, 0x32, 0x3c, 0x46,
 
 /**
  * @brief Creates a new instance of the Hubsan protocol.
+ * @param id ID of this transmitter
  * @param forceBind Ignore the last bind packet (fixes failing to bind)
- * @param vtxFreq VIdeo transmission frequency in kHz (for FPV model
+ * @param vtxFreq Video transmission frequency in kHz (for FPV model
  */
 Hubsan::Hubsan(uint16_t id, bool forceBind, uint16_t vtxFreq)
     : IProtocol()
