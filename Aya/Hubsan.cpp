@@ -32,7 +32,6 @@
 #define MIN_THROTTLE_US 1100
 
 #define USE_HUBSAN_EXTENDED
-#define DEFAULT_VTX_FREQ 5885 // x0.001GHz 5725:5995 steps of 5
 
 #define WAIT_WRITE 0x80
 
@@ -49,15 +48,19 @@ const uint8_t hubsanAllowedChannels[] = {0x14, 0x1e, 0x28, 0x32, 0x3c, 0x46,
 
 /**
  * @brief Creates a new instance of the Hubsan protocol.
+ * @param forceBind Ignore the last bind packet (fixes failing to bind)
+ * @param vtxFreq VIdeo transmission frequency in kHz (for FPV model
  */
-Hubsan::Hubsan(bool forceBind)
+Hubsan::Hubsan(uint16_t id, bool forceBind, uint16_t vtxFreq)
     : IProtocol()
+    , m_id(id)
     , m_state(BIND_1)
     , m_rssiChannel(0)
     , m_enableFlip(true)
     , m_enableLED(true)
     , m_recordVideo(false)
     , m_forceBind(forceBind)
+    , m_vtxFreq(vtxFreq)
 {
 }
 
@@ -92,7 +95,6 @@ bool Hubsan::bind()
   setBindState(0xffffffff);
   m_state = BIND_1;
   m_packetCount = 0;
-  m_vtxFreq = DEFAULT_VTX_FREQ;
 
   return true;
 }
@@ -403,10 +405,10 @@ void Hubsan::buildPacket()
   }
 
   a7105_packet[10] = 0x64;
-  a7105_packet[11] = (hubsanID >> 24) & 0xff;
-  a7105_packet[12] = (hubsanID >> 16) & 0xff;
-  a7105_packet[13] = (hubsanID >> 8) & 0xff;
-  a7105_packet[14] = (hubsanID >> 0) & 0xff;
+  a7105_packet[11] = (m_id >> 24) & 0xff;
+  a7105_packet[12] = (m_id >> 16) & 0xff;
+  a7105_packet[13] = (m_id >> 8) & 0xff;
+  a7105_packet[14] = (m_id >> 0) & 0xff;
 
   a7105CRCUpdate(16);
 }
@@ -427,10 +429,10 @@ void Hubsan::buildBindPacket(uint8_t state)
   a7105_packet[8] = 0xea;
   a7105_packet[9] = 0x9e;
   a7105_packet[10] = 0x50;
-  a7105_packet[11] = (hubsanID >> 24) & 0xff;
-  a7105_packet[12] = (hubsanID >> 16) & 0xff;
-  a7105_packet[13] = (hubsanID >> 8) & 0xff;
-  a7105_packet[14] = (hubsanID >> 0) & 0xff;
+  a7105_packet[11] = (m_id >> 24) & 0xff;
+  a7105_packet[12] = (m_id >> 16) & 0xff;
+  a7105_packet[13] = (m_id >> 8) & 0xff;
+  a7105_packet[14] = (m_id >> 0) & 0xff;
 
   a7105CRCUpdate(16);
 }

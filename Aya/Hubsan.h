@@ -5,8 +5,6 @@
 
 #include "IProtocol.h"
 
-#define hubsanID 0x35000001
-
 enum
 {
   BIND_1,
@@ -31,7 +29,7 @@ enum
 class Hubsan : public IProtocol
 {
 public:
-  Hubsan(bool forceBind = false);
+  Hubsan(uint16_t id = 0x35000001, bool forceBind = false, uint16_t vtxFreq = 5800);
   virtual ~Hubsan(){};
 
   bool setup();
@@ -46,6 +44,7 @@ private:
   void buildBindPacket(uint8_t state);
   void updateTelemetry();
 
+  uint16_t m_id;
   int16_t m_state;
   uint16_t m_vtxFreq;
   uint8_t m_channel;

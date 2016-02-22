@@ -10,7 +10,7 @@
 #define THROTTLE_CHANNEL 2
 #define MIN_THROTTLE 1050
 
-Hubsan hubsan(true);
+Hubsan hubsan(0x35000001, true, 5885);
 uint32_t next_update_us = 0;
 
 /**
