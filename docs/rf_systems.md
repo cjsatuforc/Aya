@@ -8,13 +8,13 @@ List of RF modules/systems
 
 [Pinout](A7105_pinout.png)
 
-Supports protocols:
-  - Hubsan
-
 Pinouts:
   - SDIO <-> 5
   - SCK <-> 4
   - SCS <-> 2
+
+Supports protocols:
+  - Hubsan
 
 ## nRF24 (2.4GHz)
 

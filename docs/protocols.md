@@ -4,10 +4,10 @@ List of supported protocols
 
 ## Hubsan
 
+Used on all of the Hubsan models.
+
 Required RF:
   - A7105
-
-Used on all of the Hubsan models.
 
 Confirmed working on:
   - H111 (Nano Q4)
