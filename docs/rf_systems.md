@@ -8,7 +8,7 @@ List of RF modules/systems
 
 [Pinout](A7105_pinout.png)
 
-Pinouts:
+Pin mapping:
   - SDIO <-> 5
   - SCK <-> 4
   - SCS <-> 2
