@@ -1,4 +1,13 @@
-/** @file */
+/**
+ * @file
+ *
+ * A7105 on pins:
+ *  SDIO = 5
+ *  SCK = 4
+ *  SCS = 2
+ * CPPM on pin 3
+ * LED on pin 13
+ */
 
 #include <TimerOne.h>
 
@@ -56,6 +65,7 @@ void loop()
   {
     cppm_read();
 
+    // Set channel order here
     hubsan.setCommand(COMMAND_ROLL, cppm_channels[0]);
     hubsan.setCommand(COMMAND_PITCH, cppm_channels[1]);
     hubsan.setCommand(COMMAND_THROTTLE, cppm_channels[THROTTLE_CHANNEL]);
